@@ -21,7 +21,8 @@ die(){  printf '  \033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 # Dev Spaces is required to open the workspace. If it's missing, ask before
 # installing — it's a cluster-scoped change (operator + openshift-devspaces ns).
 ensure_devspaces(){
-  if oc get csv -A 2>/dev/null | grep -iq devspaces; then
+  DS_CSVS="$(oc get csv -A 2>/dev/null)"
+  if grep -iq devspaces <<<"$DS_CSVS"; then
     ok "Dev Spaces operator already installed"; return 0
   fi
   warn "Dev Spaces operator is NOT installed (needed to open the workspace)."
@@ -49,7 +50,8 @@ spec:
 YAML
   printf '  waiting for the operator to reach Succeeded'
   for _ in $(seq 1 40); do
-    oc get csv -A 2>/dev/null | grep -i devspaces | grep -q Succeeded && { echo; ok "operator Succeeded"; break; }
+    DS_CSVS="$(oc get csv -A 2>/dev/null)"
+    grep -i devspaces <<<"$DS_CSVS" | grep -q Succeeded && { echo; ok "operator Succeeded"; break; }
     printf '.'; sleep 15
   done
   if [ -z "$(oc get checluster -A -o name 2>/dev/null)" ]; then
@@ -64,6 +66,16 @@ spec:
   devEnvironments:
     defaultNamespace:
       template: <username>-devspaces
+    # Keep in lockstep with preflight.sh: the built-in edit role is what lets a
+    # developer provision their device VM; per-workspace storage keeps one
+    # workspace's Gradle cache from starving another's.
+    user:
+      clusterRoles:
+        - edit
+    storage:
+      pvcStrategy: per-workspace
+      perWorkspaceStrategyPvcConfig:
+        claimSize: 15Gi
 YAML
     ok "CheCluster submitted (takes a few minutes to come up)"
   fi
@@ -135,6 +147,6 @@ cat <<EOF
   No custom roles, no per-namespace RBAC step: Dev Spaces itself grants each
   developer the built-in 'edit' role in their namespace (CheCluster
   user.clusterRoles — see preflight.sh). Developers just open the app from the
-  dashboard — each workspace provisions its own device, which sleeps and is
-  deleted with it.
+  dashboard and manage their device with the 'device' command (device start /
+  stop / remove); deleting the workspace removes the device automatically.
 EOF

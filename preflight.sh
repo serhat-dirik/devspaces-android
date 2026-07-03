@@ -32,8 +32,12 @@ fi
 
 # ---- 2. KVM readiness ----
 hd "KVM / virtualization"
-if oc get csv -n openshift-cnv 2>/dev/null | grep -iq kubevirt; then
-  ok "OpenShift Virtualization operator installed"
+# Probe the CRDs, not the CSV list: deterministic (a `... | grep -q` pipe under
+# `set -o pipefail` false-negatives when grep matches early and the left side
+# exits 141 on SIGPIPE), and the CRDs are what the platform actually needs.
+if oc get crd virtualmachines.kubevirt.io >/dev/null 2>&1 \
+   && oc get crd datavolumes.cdi.kubevirt.io >/dev/null 2>&1; then
+  ok "OpenShift Virtualization installed (KubeVirt + CDI CRDs present)"
 else
   warn "OpenShift Virtualization not detected (provides the KVM device plugin) — see the README"
 fi
@@ -48,7 +52,8 @@ ok "no node label needed — KubeVirt schedules device VMs onto KVM-capable node
 # ---- 3. Dev Spaces ----
 hd "OpenShift Dev Spaces"
 DS_PRESENT=no
-if oc get csv -A 2>/dev/null | grep -iq devspaces || oc get subscription -A 2>/dev/null | grep -iq devspaces; then
+DS_CSVS="$(oc get csv -A 2>/dev/null)"; DS_SUBS="$(oc get subscription -A 2>/dev/null)"
+if grep -iq devspaces <<<"$DS_CSVS" || grep -iq devspaces <<<"$DS_SUBS"; then
   DS_PRESENT=yes; ok "Dev Spaces operator installed"
 else
   warn "Dev Spaces operator NOT installed"
@@ -78,7 +83,8 @@ spec:
 EOF
     echo -n "  waiting for the operator to be ready"
     for _ in $(seq 1 20); do
-      if oc get csv -n openshift-operators 2>/dev/null | grep -i devspaces | grep -q Succeeded; then echo; ok "operator ready"; DS_PRESENT=yes; break; fi
+      OP_CSVS="$(oc get csv -n openshift-operators 2>/dev/null)"
+      if grep -i devspaces <<<"$OP_CSVS" | grep -q Succeeded; then echo; ok "operator ready"; DS_PRESENT=yes; break; fi
       echo -n "."; sleep 15
     done
     [ "$DS_PRESENT" = yes ] || { echo; warn "operator not Succeeded yet — re-run './preflight.sh check' shortly"; }
