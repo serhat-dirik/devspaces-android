@@ -35,9 +35,10 @@ hd "KVM / virtualization"
 # Probe the CRDs, not the CSV list: deterministic (a `... | grep -q` pipe under
 # `set -o pipefail` false-negatives when grep matches early and the left side
 # exits 141 on SIGPIPE), and the CRDs are what the platform actually needs.
+VIRT_OK=no
 if oc get crd virtualmachines.kubevirt.io >/dev/null 2>&1 \
    && oc get crd datavolumes.cdi.kubevirt.io >/dev/null 2>&1; then
-  ok "OpenShift Virtualization installed (KubeVirt + CDI CRDs present)"
+  VIRT_OK=yes; ok "OpenShift Virtualization installed (KubeVirt + CDI CRDs present)"
 else
   warn "OpenShift Virtualization not detected (provides the KVM device plugin) — see the README"
 fi
@@ -123,7 +124,19 @@ spec:
       perWorkspaceStrategyPvcConfig:
         claimSize: 15Gi
 EOF
-    ok "CheCluster submitted — it takes a few minutes to come up"
+    ok "CheCluster submitted"
+  fi
+
+  # Wait for the instance to actually come up — deploying it is not the same as
+  # it being usable, and the next steps assume a live dashboard.
+  if [ -z "$CHE_URL" ] && [ "$DS_PRESENT" = yes ]; then
+    echo -n "  waiting for the Dev Spaces instance to come up (several minutes on first install)"
+    for _ in $(seq 1 60); do
+      CHE_URL=$(oc get checluster -A -o jsonpath='{.items[0].status.cheURL}' 2>/dev/null)
+      [ -n "$CHE_URL" ] && { echo; ok "Dev Spaces is up: $CHE_URL"; break; }
+      echo -n "."; sleep 15
+    done
+    [ -n "$CHE_URL" ] || { echo; warn "instance not ready after 15 min — monitor with './preflight.sh check'"; }
   fi
 
   echo
@@ -134,4 +147,8 @@ EOF
 fi
 
 hd "Done"
-echo "  Re-run './preflight.sh check' until KVM and Dev Spaces are green, then follow the README quickstart."
+if [ "$VIRT_OK" = yes ] && [ -n "$KVM_NODES" ] && [ "$DS_PRESENT" = yes ] && [ -n "$CHE_URL" ]; then
+  ok "all green — continue with the README quickstart (next: ./openshift/build-and-deploy.sh)"
+else
+  echo "  Re-run './preflight.sh check' until every section above is green, then continue with the README quickstart."
+fi
