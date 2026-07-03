@@ -127,22 +127,15 @@ DEVFILE= ./samples/register-sample.sh                      # 7. register the app
 # (why the raw URL? see "Registering the sample" right below)
 ```
 
-> **Step 7 registers a served devfile URL, not the repo URL.** Resolving a
-> `github.com/...` repo URL requires the Dev Spaces **GitHub OAuth integration**,
-> which a fresh cluster doesn't have — without it Che silently falls back to a
-> default (UDI) workspace and the app never appears. The raw
-> `served-devfile.yaml` URL resolves anonymously, still needs **no standing
-> deployment** (GitHub serves it), and names workspaces properly. If your
-> cluster *does* have GitHub OAuth configured, `REPO_URL=<your repo>` with the
-> default DEVFILE works too.
->
-> **Step 6 is what makes device provisioning fast.** It bakes Ubuntu + docker +
-> the redroid Android images into one golden disk; every device then CSI-clones
-> that disk in seconds instead of downloading everything from the internet —
-> `device start` drops from **~10 min to ~2 min**. Skippable (provisioning falls
-> back to the slow full-import path), but you want it. Optional extra:
+> **Step 6** bakes Ubuntu + docker + the redroid Android images into one golden
+> disk that every device clones in seconds — `device start` drops from **~10 min
+> to ~2 min**. Optional extra:
 > `oc apply -f openshift/image-prewarm.yaml -n devspace-android-demo` pre-pulls
-> the big workspace image onto every node, so first workspaces start fast too.
+> the workspace image onto every node, so first workspaces start fast too.
+>
+> **Step 7** registers the devfile URL rather than the git repo: repo URLs only
+> resolve when the Dev Spaces **GitHub OAuth integration** is configured. If
+> yours is, `export REPO_URL=<your repo>` (without `DEVFILE=`) works too.
 
 > Device VMs need a KVM-capable node, but **KubeVirt schedules them there
 > automatically**.
