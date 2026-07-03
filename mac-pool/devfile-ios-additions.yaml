@@ -1,0 +1,41 @@
+# iOS (design sketch) — merge these into devfile.yaml to add iOS.
+# Requires: a Mac pool, scripts/mac.sh in the repo, and the tools image extended
+# with openssh-clients + rsync + fastlane + awscli (see mac-pool/README.md).
+#
+# Add to the existing `commands:` list:
+commands:
+  - id: lease-mac
+    exec:
+      component: tools
+      commandLine: "scripts/mac.sh lease"
+      workingDir: ${PROJECT_SOURCE}/app
+  - id: build-ios
+    exec:
+      component: tools
+      commandLine: "scripts/mac.sh build"
+      workingDir: ${PROJECT_SOURCE}/app
+      group: { kind: build }
+  - id: run-ios
+    exec:
+      component: tools
+      commandLine: "scripts/mac.sh run"
+      workingDir: ${PROJECT_SOURCE}/app
+      group: { kind: run }
+  - id: release-mac
+    exec:
+      component: tools
+      commandLine: "scripts/mac.sh release"
+      workingDir: ${PROJECT_SOURCE}/app
+
+# Add these to the existing `events:` block (or rely on lease-on-demand only):
+events:
+  postStart:
+    - lease-mac          # acquire-or-reuse a Mac when the workspace starts
+  preStop:
+    - release-mac        # hand the Mac back (or use a pool-side TTL instead)
+
+# Add to the `tools` container `env:` so mac.sh knows your pool:
+#   env:
+#     - { name: POOL_PROVIDER, value: "ec2mac" }
+#     - { name: POOL_IMAGE,    value: "ami-xxxxxxxx" }   # golden macOS image
+#     - { name: APP_SCHEME,    value: "Runner" }          # Flutter iOS scheme

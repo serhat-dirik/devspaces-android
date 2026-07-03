@@ -1,0 +1,64 @@
+# On-cluster build of ws-scrcpy (the live device screen). Community project, used
+# for the demo only — built from the upstream repo onto a lean Red Hat UBI Node
+# base, plus the adb binary. Produces the ws-scrcpy:latest image used by
+# screen-ws-scrcpy.yaml.
+#
+#   oc apply -f openshift/device/screen-buildconfig.yaml
+#   oc start-build ws-scrcpy -n devspace-android-demo
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: ws-scrcpy
+  namespace: devspace-android-demo
+  labels: {purpose: devspace-android-demo, role: device-screen}
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: ws-scrcpy
+  namespace: devspace-android-demo
+  labels: {purpose: devspace-android-demo, role: device-screen}
+spec:
+  source:
+    type: Git
+    git:
+      uri: "https://github.com/NetrisTV/ws-scrcpy.git"
+      # Pin the upstream community ref (QA M2) — HEAD of master at review time.
+      # ws-scrcpy has no releases; pinning a commit means a broken upstream push
+      # can't silently break every new workspace's screen, and gives a known-good
+      # SHA to roll back to. Bump deliberately.
+      ref: "1f68133c42b9a015bbd65843519141741bce51cd"
+    dockerfile: |
+      # Base image pinned by digest (QA M2) for reproducible builds. This is
+      # ubi9/nodejs-20:latest as of review time; update the digest when you
+      # intentionally rebase. Resolve a new one with:
+      #   oc image info registry.access.redhat.com/ubi9/nodejs-20:latest
+      FROM registry.access.redhat.com/ubi9/nodejs-20@sha256:e395d430f6534e9f8df4519cbbf11fe5a3ac8f2c1209c821bf7b05520dd7c7ce
+      USER 0
+      RUN dnf -y install unzip && dnf clean all
+      RUN curl -fsSL https://dl.google.com/android/repository/platform-tools-latest-linux.zip -o /tmp/pt.zip \
+       && unzip -q /tmp/pt.zip -d /opt && rm /tmp/pt.zip
+      ENV PATH=$PATH:/opt/platform-tools
+      WORKDIR /ws-scrcpy
+      COPY . .
+      RUN npm install && npm run dist && npm cache clean --force
+      # DEVICE_ADDR is always set explicitly by the provisioner (to dev-<ws>:5555).
+      # The provisioner is the only caller, so there is no safe shared default —
+      # fail loudly if it is somehow unset rather than pointing at a non-existent
+      # shared device (the old android-device.devspace-android-demo.svc default
+      # was a legacy leftover from the pre-per-workspace model — QA L6).
+      RUN printf '#!/bin/bash\nif [ -z "${DEVICE_ADDR:-}" ]; then echo "DEVICE_ADDR not set (the provisioner sets it to dev-<ws>:5555)" >&2; exit 1; fi\nadb start-server >/dev/null 2>&1\n( while true; do adb connect "$DEVICE_ADDR" >/dev/null 2>&1; sleep 30; done ) &\ncd /ws-scrcpy/dist && exec node index.js\n' > /usr/local/bin/start-ws.sh \
+       && chmod +x /usr/local/bin/start-ws.sh \
+       && chgrp -R 0 /ws-scrcpy /opt/platform-tools /usr/local/bin/start-ws.sh \
+       && chmod -R g=u /ws-scrcpy /opt/platform-tools /usr/local/bin/start-ws.sh
+      USER 1001
+      EXPOSE 8000
+      CMD ["/usr/local/bin/start-ws.sh"]
+  strategy:
+    type: Docker
+    dockerStrategy: {}
+  output:
+    to: {kind: ImageStreamTag, name: "ws-scrcpy:latest"}
+  resources:
+    limits: {memory: 6Gi, cpu: "2", ephemeral-storage: 15Gi}
+  completionDeadlineSeconds: 2400

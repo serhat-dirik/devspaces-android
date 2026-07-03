@@ -1,0 +1,23 @@
+# Static version of the Dev Spaces sample registration (the script
+# register-sample.sh generates this for you). Replace REPLACE_REPO_URL and
+# REPLACE_ICON_BASE64 (contents of samples/icon.b64), then:
+#   oc apply -f samples/devspaces-sample-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: getting-started-samples-android
+  namespace: openshift-devspaces
+  labels:
+    app.kubernetes.io/part-of: che.eclipse.org
+    app.kubernetes.io/component: getting-started-samples
+data:
+  android.json: |
+    [
+      {
+        "displayName": "Android Mobile Workspace",
+        "description": "Flutter Android app — Linux preview + on-cluster emulator. Scaffolds itself on first start.",
+        "tags": ["Android", "Flutter", "Mobile"],
+        "url": "REPLACE_REPO_URL?devfilePath=devfile.yaml",
+        "icon": { "base64data": "REPLACE_ICON_BASE64", "mediatype": "image/png" }
+      }
+    ]

@@ -1,0 +1,47 @@
+# In-cluster build of the developer workspace image (Flutter + Android SDK + adb).
+#
+# Strategy: Docker (buildah) — it's a Dockerfile build.
+# Source:   Binary — `oc start-build --from-dir=.` uploads the local context,
+#           so no Git remote is required.
+# Output:   ImageStreamTag mobile-allinone:latest in the internal registry.
+#
+# The base image (registry.redhat.io/devspaces/udi-rhel9) is gated: the build
+# pulls it using the `builder` service account's linked pull secrets, which
+# inherit the cluster-wide global pull secret on a properly configured cluster.
+#
+# Resources are generous on purpose: the build downloads the Android SDK and the
+# full Flutter SDK (multi-GB, slow on first build).
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: mobile-allinone
+  labels:
+    app: devspaces-android
+spec:
+  successfulBuildsHistoryLimit: 2
+  failedBuildsHistoryLimit: 2
+  runPolicy: Serial
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: mobile-allinone:latest
+  resources:
+    requests:
+      cpu: "1"
+      memory: 4Gi
+      ephemeral-storage: 16Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+      # Peak scratch = downloaded archives + unzipped SDK/system-image +
+      # buildah overlay diffs + blob cache, all coexisting before cleanup.
+      # 50Gi fits comfortably under the ~88Gi node allocatable.
+      ephemeral-storage: 50Gi
+  completionDeadlineSeconds: 5400   # 90 min — first build is slow

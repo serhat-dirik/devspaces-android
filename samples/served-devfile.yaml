@@ -1,0 +1,129 @@
+# Served devfile for the SELF-HOSTED / unrecognized-git path.
+#
+# This is the devfile the in-cluster `devfile-server` (samples/devfile-server.yaml)
+# serves when your app repo is on a git host Che can't fetch from directly (e.g.
+# self-hosted GitLab, GitHub Enterprise behind a wildcard cert, or the demo's
+# in-cluster Gitea). On a recognized public host (GitHub/GitLab/Bitbucket) you do
+# NOT need this — the catalog points straight at the repo (see register-sample.sh).
+#
+# It is the app's own devfile (devspaces-android-sample-app/devfile.yaml) with one addition:
+# the top-level `projects:` clause below, which tells the workspace to git-clone
+# the app repo on start. When Che fetches a devfile straight from a repo it injects
+# this automatically; a SERVED devfile is decoupled from any repo, so the clone
+# clause must be spelled out here.
+#
+# The projects: clause below points at the published sample-app repo. Serving a
+# different repo (e.g. an in-cluster Gitea mirror or your fork)? Substitute its
+# clone URL there first. Then load it as the ConfigMap the server serves:
+#   oc create configmap mobile-workspace-devfile -n devspace-android-demo \
+#     --from-file=devfile.yaml=samples/served-devfile.yaml
+schemaVersion: 2.2.0
+metadata:
+  name: mobile-dev
+  displayName: Mobile Dev (Flutter+Android VM)
+  description: A Flutter app you build and run on your own on-cluster Android device.
+# ---- self-hosted-git addition: clone the app repo on workspace start ----
+# Substitute <your-app-repo-url> with your real app repo (your admin gives you the
+# URL). `main` is the default branch — change it if your app repo uses another.
+projects:
+  - name: devspaces-android-sample-app
+    git:
+      remotes:
+        origin: https://github.com/serhat-dirik/devspaces-android-sample-app.git
+      checkoutFrom:
+        revision: main
+components:
+  - name: tools
+    container:
+      image: image-registry.openshift-image-registry.svc:5000/devspace-android-demo/mobile-allinone:latest
+      # Burstable sizing — the scheduler reserves only the REQUESTS; the LIMITS are
+      # the ceiling a native `flutter build apk` (Gradle + Dart AOT, ~12-14Gi peak)
+      # can burst to. So a workspace footprint is ~4Gi/1cpu at rest (editing + web
+      # preview) and bursts to 14Gi/6cpu only during an APK build. This packs far
+      # more workspaces per node without slowing the build. (If your cluster runs
+      # many *concurrent* APK builds on one node, raise memoryRequest toward 8Gi.)
+      memoryLimit: 14Gi
+      memoryRequest: 4Gi
+      cpuLimit: "6"
+      cpuRequest: "1"
+      mountSources: true
+      # Default Android device profile for provision-device.sh.
+      # Override per-terminal:  export DEVICE_PROFILE=tablet; provision-device.sh
+      # Known profiles: phone (default) | tablet | phone-a12
+      env:
+        - name: DEVICE_PROFILE
+          value: phone
+        # Platform namespace the device scripts pull images from. Feeds the
+        # PLATFORM_NS override in provision-device.sh so it can't drift from the
+        # namespace this workspace image is published under.
+        - name: PLATFORM_NS
+          value: devspace-android-demo
+      endpoints:
+        - { name: flutter-web, targetPort: 8080, exposure: public, protocol: https }
+        - { name: devtools, targetPort: 9100, exposure: public, protocol: https }
+  - name: projects
+    volume:
+      size: 15Gi
+commands:
+  # ---- fast inner loop: develop & preview in the browser (no device needed) ----
+  # This is the default "Run". It builds a self-contained web bundle and serves
+  # it at the workspace's flutter-web endpoint.
+  #
+  # Why NOT `flutter run -d web-server` here: run RAW, that DEBUG build's
+  # bootstrap blocks on a dwds WebSocket hardcoded to ws://127.0.0.1:8080. Behind
+  # the Dev Spaces HTTPS gateway that socket can never connect, so main() never
+  # runs and the tab stays BLANK. This task therefore serves a PROFILE build,
+  # which has no dwds dependency and renders reliably through the proxy. First
+  # build is ~25-30s (see README); re-run "Web preview" after edits to rebuild.
+  # (For hot reload, use the IDE's "Flutter: Web hot reload (IDE debug)" launch
+  # config instead — the Dart extension forwards the dwds socket itself, so the
+  # debug session can connect where this raw command cannot. See README + the
+  # .vscode/launch.json note.)
+  - id: preview-web
+    exec:
+      component: tools
+      label: "Web preview"
+      commandLine: "flutter build web --profile --base-href / && cd build/web && echo 'Web preview ready at the flutter-web endpoint (Open in New Tab).' && python3 -m http.server 8080 --bind 0.0.0.0"
+      workingDir: "${PROJECT_SOURCE}"
+      group: { kind: run, isDefault: true }
+  # ---- then verify on the real on-cluster Android device ----
+  - id: run-on-device
+    exec: { component: tools, label: "Device: run app", commandLine: "device run", workingDir: "${PROJECT_SOURCE}", group: { kind: run } }
+  - id: open-screen
+    exec: { component: tools, label: "Device: screen URL", commandLine: "device screen", group: { kind: run } }
+  - id: build-apk
+    exec: { component: tools, commandLine: "flutter build apk --debug", workingDir: "${PROJECT_SOURCE}", group: { kind: build, isDefault: true } }
+  # ---- quality: format, analyze, test ----
+  - id: format
+    exec: { component: tools, commandLine: "dart format .", workingDir: "${PROJECT_SOURCE}", group: { kind: build } }
+  - id: analyze
+    exec: { component: tools, commandLine: "flutter analyze", workingDir: "${PROJECT_SOURCE}", group: { kind: test } }
+  - id: test
+    exec: { component: tools, commandLine: "flutter test", workingDir: "${PROJECT_SOURCE}", group: { kind: test, isDefault: true } }
+  # ---- manage your device ----
+  # ids align with their script names (device-status.sh, restart-device.sh, …)
+  # so the task picker and the scripts on disk read the same.
+  - id: device-status
+    exec: { component: tools, label: "Device: status", commandLine: "device status", group: { kind: run } }
+  - id: watch-device
+    exec: { component: tools, label: "Device: watch until ready", commandLine: "device watch", group: { kind: run } }
+  - id: restart-device
+    exec: { component: tools, label: "Device: restart", commandLine: "device restart", group: { kind: run } }
+  - id: provision-device
+    exec: { component: tools, label: "Device: start (run me first)", commandLine: "device start", group: { kind: run } }
+  - id: stop-device
+    exec: { component: tools, label: "Device: stop (halt, keeps disk)", commandLine: "device stop", group: { kind: run } }
+  - id: remove-device
+    exec: { component: tools, label: "Device: remove (delete device + disk)", commandLine: "device remove", group: { kind: run } }
+  # ---- lifecycle (run automatically by Dev Spaces) ----
+  - id: pub-get
+    exec: { component: tools, commandLine: "flutter pub get || true", workingDir: "${PROJECT_SOURCE}" }
+# The DEVICE lifecycle is deliberately MANUAL — the developer owns it:
+#   device start · device stop · device remove
+# There is NO postStart auto-provision and NO preStop auto-halt: lifecycle events
+# run as the workspace service account, which has no VM rights (developers get the
+# built-in `edit` role; the SA deliberately gets nothing). Deleting the workspace
+# still removes the device automatically (Kubernetes owner-reference GC).
+events:
+  postStart:
+    - pub-get

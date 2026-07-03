@@ -1,0 +1,55 @@
+# Serves the workspace devfile over plain HTTP for the Dev Spaces catalog.
+#
+# NEEDED ONLY when the git host isn't one Che recognizes (e.g. the temporary
+# in-cluster Gitea): Che otherwise guesses a `raw.<host>` URL the wildcard cert
+# doesn't cover and the workspace fails to fetch its devfile. In a real GitHub
+# setup you can point the catalog straight at the repo (see register-sample.sh)
+# and skip this server entirely — leaving the platform with no permanent runtime
+# deployment of its own.
+#
+# The devfile content lives in the ConfigMap `mobile-workspace-devfile`
+# (key: devfile.yaml), populated by the serve step in register-sample.sh.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mobile-workspace-devfile
+  namespace: devspace-android-demo
+  labels: { app: mobile-workspace-devfile }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mobile-workspace-devfile } }
+  template:
+    metadata: { labels: { app: mobile-workspace-devfile } }
+    spec:
+      containers:
+        - name: server
+          image: registry.access.redhat.com/ubi9/python-311:latest
+          command: ["sh", "-c", "cd /cfg && exec python3 -m http.server 8080"]
+          ports: [ { containerPort: 8080 } ]
+          volumeMounts: [ { name: cfg, mountPath: /cfg } ]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 256Mi }
+      volumes:
+        - { name: cfg, configMap: { name: mobile-workspace-devfile } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mobile-workspace-devfile
+  namespace: devspace-android-demo
+  labels: { app: mobile-workspace-devfile }
+spec:
+  selector: { app: mobile-workspace-devfile }
+  ports: [ { port: 8080, targetPort: 8080 } ]
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mobile-workspace-devfile
+  namespace: devspace-android-demo
+  labels: { app: mobile-workspace-devfile }
+spec:
+  to: { kind: Service, name: mobile-workspace-devfile }
+  port: { targetPort: 8080 }
+  tls: { termination: edge, insecureEdgeTerminationPolicy: Redirect }

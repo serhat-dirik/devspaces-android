@@ -1,0 +1,86 @@
+# Platform RBAC — applied ONCE at install. No custom roles, no per-namespace steps.
+#
+# Developer permissions come from Dev Spaces' OWN mechanism, not from this file:
+# the CheCluster sets `devEnvironments.user.clusterRoles: ["edit"]` (see
+# preflight.sh), so Che binds the BUILT-IN `edit` role to each developer in every
+# namespace it provisions — automatically, including namespaces created in the
+# future. With OpenShift Virtualization installed, KubeVirt/CDI aggregate their
+# verbs into `edit`, so a developer can create their device VM, DataVolumes, and
+# NetworkPolicies with the same standard role that lets them deploy apps.
+# No synthetic "android-*" role exists any more.
+#
+# What's left here is two bindings of BUILT-IN roles that Che's mechanism can't
+# cover (both are one-time, cluster-wide):
+---
+# The device SCREEN's oauth-proxy sidecar validates OpenShift logins via a
+# cluster-scoped TokenReview — the standard oauth-proxy requirement. Its pod runs
+# under a namespace-local SA, so bind system:auth-delegator broadly once.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: android-screen-auth-delegator
+  labels: { app: devspaces-android }
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: Group
+    apiGroup: rbac.authorization.k8s.io
+    name: system:authenticated
+---
+# Let any workspace (any namespace) pull the shared workspace + ws-scrcpy images
+# from the platform namespace. One binding of the built-in image-puller role.
+# (Cleaner still: build these ImageStreams into the `openshift` namespace, which is
+# globally pullable, and drop this binding entirely — a follow-up.)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: workspace-image-puller
+  namespace: devspace-android-demo
+  labels: { app: devspaces-android }
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:image-puller
+subjects:
+  - kind: Group
+    apiGroup: rbac.authorization.k8s.io
+    name: system:authenticated
+---
+# CDI cross-namespace clone consent for the golden image. Creating a device
+# DataVolume that CLONES ${platform}/golden-android-disk requires `create` on
+# datavolumes/source in the SOURCE namespace (CDI's ownership check). There is no
+# built-in role carrying exactly this verb, so this one exists — but note the
+# scope: it is bound ONLY in the platform namespace and only permits using the
+# shared golden disk as a clone source (same spirit as image-puller above).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: android-golden-image-cloner
+  labels: { app: devspaces-android }
+rules:
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes/source"]
+    verbs: ["create"]
+  # provision-device.sh probes for the golden PVC to pick the fast clone path —
+  # without read access the probe silently fails and every device falls back to
+  # the slow full-import path.
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: android-golden-image-cloner
+  namespace: devspace-android-demo
+  labels: { app: devspaces-android }
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: android-golden-image-cloner
+subjects:
+  - kind: Group
+    apiGroup: rbac.authorization.k8s.io
+    name: system:authenticated

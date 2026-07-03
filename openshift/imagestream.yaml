@@ -1,0 +1,10 @@
+# Internal-registry ImageStream that receives the all-in-one build output.
+# The Dev Spaces workspace pulls from this via the in-cluster registry DNS:
+#   image-registry.openshift-image-registry.svc:5000/<namespace>/mobile-allinone:latest
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: mobile-allinone
+  labels:
+    app: devspaces-android
+    variant: allinone

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# device — manage this workspace's on-cluster Android device.
+#
+#   device start      create the device, or wake a stopped one (idempotent)
+#   device stop       halt VM + screen when you're done (keeps the disk)
+#   device status     boot state + live-screen URL
+#   device watch      full status, refreshed on screen until you Ctrl-C
+#   device restart    reboot a frozen device
+#   device remove     delete the device + its disk
+#   device run        build + install + launch the app on the device
+#   device screen     print the live-screen URL
+#   device help       full cheatsheet
+#
+# Thin dispatcher over the individual scripts (also on PATH, kept for scripting).
+set -euo pipefail
+cmd="${1:-help}"; shift || true
+
+watch_device() {
+  # Full `device status` refreshed in place until the user Ctrl-C's out.
+  local t0 el out
+  t0=$(date +%s)
+  trap 'printf "\n"; exit 0' INT
+  while :; do
+    out="$(device-status.sh 2>&1)"          # capture first, then repaint: no flicker
+    el=$(( $(date +%s) - t0 ))
+    printf '\033[2J\033[H'
+    printf 'device watch — refreshes every 5s · Ctrl-C to exit · watching for %02d:%02d\n\n' $((el/60)) $((el%60))
+    printf '%s\n' "$out"
+    sleep 5
+  done
+}
+
+case "$cmd" in
+  start|up|provision|wake) exec provision-device.sh "$@" ;;
+  stop|halt|sleep)         exec stop-device.sh "$@" ;;
+  status)                  exec device-status.sh "$@" ;;
+  watch|wait)              watch_device ;;
+  restart|reboot)          exec restart-device.sh "$@" ;;
+  remove|rm|delete)        exec remove-device.sh "$@" ;;
+  run)                     exec run-on-device.sh "$@" ;;
+  screen)                  exec open-screen.sh "$@" ;;
+  help|--help|-h)          exec mobile-help ;;
+  *)
+    echo "device: unknown command '$cmd'" >&2
+    echo "usage: device start|stop|status|watch|restart|remove|run|screen|help" >&2
+    exit 2 ;;
+esac

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# In-workspace cheatsheet for the on-cluster Android device.
+#   mobile-help            full command list (also: device help)
+#   mobile-help --banner   the terminal greeting (used on shell start)
+if [ "${1:-}" = "--banner" ]; then
+  printf '\033[1m\360\237\223\261 Mobile Dev\033[0m \342\200\224 \033[1myour device, you run it:\033[0m '
+  printf '\033[1mdevice start\033[0m \302\267 \033[1mdevice stop\033[0m \302\267 '
+  printf '\033[1mdevice help\033[0m for all commands\n'
+  exit 0
+fi
+cat <<'EOF'
+
+📱 Mobile Dev — YOUR on-cluster Android device. One command: `device`
+
+  ── lifecycle (yours to run) ─────────────────────────────────────────────
+  device start      START: create the device — run this FIRST (also wakes a
+                    stopped device; safe to re-run any time).
+  device stop       STOP when you're done: halts the VM + screen, keeps the
+                    disk, frees ~4 CPU / 4Gi RAM. Workspace sleep does NOT
+                    stop the device — stopping it is on you.
+  device remove     DELETE the device + its disk entirely. (Deleting the
+                    whole workspace also removes it automatically.)
+
+  ── daily use ────────────────────────────────────────────────────────────
+  device status     Is my device up? Shows boot state + its live-screen URL.
+  device watch      Full status refreshed on screen — Ctrl-C to exit.
+  device run        Build + install + LAUNCH the app on the device (prints the screen URL).
+  device screen     Print the device's live-screen URL (open it in a browser tab).
+  device restart    Reboot a frozen device (keeps the disk).
+
+  Web preview (no device needed):  Terminal → Run Task → "Web preview", or run:
+    flutter build web --profile --base-href / && python3 -m http.server 8080 --bind 0.0.0.0 --directory build/web
+
+  Notes:
+   • First-ever `device start` takes several minutes (imports the VM image);
+     later starts/wakes are ~1–2 min.
+   • Can't create the device (Forbidden)? Ask your admin for VM provisioning
+     rights in your namespace (the platform grants the built-in 'edit' role via
+     Dev Spaces — see the platform README).
+   • On the screen, pick a decoder: WebCodecs (Chrome/Edge) or Broadway.js (Firefox).
+   • Full guide: README.md   •   this help again: device help
+
+EOF

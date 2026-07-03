@@ -1,0 +1,11 @@
+# The workspace Dockerfile has no COPY/ADD — it builds the toolchain purely from
+# downloads — so the build context can be tiny. Trim the binary upload that
+# `oc start-build --from-dir` sends to the build pod.
+.git/
+mac-pool/
+samples/
+openshift/
+showroom/
+app/
+*.log
+*.md

@@ -1,0 +1,31 @@
+# OPTIONAL: pre-pull the big workspace image onto every schedulable node so the
+# FIRST workspace on a node doesn't pay a multi-GB registry pull. Each pod just
+# sleeps; the point is the image in the node's cache (and pinned there — kubelet
+# won't GC an image a running pod uses). Costs ~a few MB of RAM per node.
+#   oc apply -f openshift/image-prewarm.yaml -n devspace-android-demo
+# Remove any time: oc delete daemonset image-prewarm -n devspace-android-demo
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: image-prewarm
+  namespace: devspace-android-demo
+  labels: { app: devspaces-android, role: image-prewarm }
+spec:
+  selector: { matchLabels: { app: image-prewarm } }
+  template:
+    metadata:
+      labels: { app: image-prewarm, role: image-prewarm }
+    spec:
+      containers:
+        - name: workspace-image
+          image: image-registry.openshift-image-registry.svc:5000/devspace-android-demo/mobile-allinone:latest
+          command: ["sleep", "infinity"]
+          resources:
+            requests: { cpu: 5m, memory: 16Mi }
+            limits: { cpu: 50m, memory: 64Mi }
+        - name: screen-image
+          image: image-registry.openshift-image-registry.svc:5000/devspace-android-demo/ws-scrcpy:latest
+          command: ["sleep", "infinity"]
+          resources:
+            requests: { cpu: 5m, memory: 16Mi }
+            limits: { cpu: 50m, memory: 64Mi }
