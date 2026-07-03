@@ -29,7 +29,10 @@
 set -euo pipefail
 : "${REPO_URL:?set REPO_URL, e.g. https://github.com/<your-org>/<flutter-app-repo>}"
 NS="${DEVSPACES_NS:-openshift-devspaces}"
-DEVFILE="${DEVFILE:-devfile.yaml}"
+DEVFILE="${DEVFILE-devfile.yaml}"
+# A bare devfile URL (e.g. raw.githubusercontent.com/.../served-devfile.yaml) is
+# registered WITHOUT a devfilePath param: set DEVFILE= (empty) for that.
+if [ -n "$DEVFILE" ]; then SAMPLE_URL="${REPO_URL}?devfilePath=${DEVFILE}"; else SAMPLE_URL="${REPO_URL}"; fi
 
 # icon (base64 PNG) sits next to this script
 ICON="$(cat "$(dirname "$0")/icon.b64")"
@@ -48,9 +51,9 @@ data:
     [
       {
         "displayName": "Mobile Dev (Flutter+Android VM)",
-        "description": "A Flutter app. Build and run it on your own on-cluster Android device — provisioned automatically with your workspace.",
+        "description": "A Flutter app. Build and run it on your own on-cluster Android device — one command from your workspace.",
         "tags": ["Android", "Flutter", "Mobile"],
-        "url": "${REPO_URL}?devfilePath=${DEVFILE}",
+        "url": "${SAMPLE_URL}",
         "icon": { "base64data": "${ICON}", "mediatype": "image/png" }
       }
     ]

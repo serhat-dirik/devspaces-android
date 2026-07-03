@@ -122,11 +122,20 @@ The canonical runbook — steps 1–3 are cluster prerequisites, 4–7 deploy th
 oc apply -f openshift/screen/buildconfig.yaml -n devspace-android-demo   # 5. ws-scrcpy screen image…
 oc start-build ws-scrcpy -n devspace-android-demo --follow --wait         #    …then build it (streams the log; exits non-zero on failure)
 ./openshift/prepare-golden-image.sh                        # 6. pre-bake the device golden image (~10 min, once)
-export REPO_URL=https://github.com/serhat-dirik/devspaces-android-sample-app   # 7. register an app in the catalog
-# (deploying your own app? point REPO_URL at your fork / your app repo instead)
-./samples/register-sample.sh
+export REPO_URL=https://raw.githubusercontent.com/serhat-dirik/devspaces-android/main/samples/served-devfile.yaml
+DEVFILE= ./samples/register-sample.sh                      # 7. register the app in the catalog
+# (why the raw URL? see "Registering the sample" right below)
 ```
 
+> **Step 7 registers a served devfile URL, not the repo URL.** Resolving a
+> `github.com/...` repo URL requires the Dev Spaces **GitHub OAuth integration**,
+> which a fresh cluster doesn't have — without it Che silently falls back to a
+> default (UDI) workspace and the app never appears. The raw
+> `served-devfile.yaml` URL resolves anonymously, still needs **no standing
+> deployment** (GitHub serves it), and names workspaces properly. If your
+> cluster *does* have GitHub OAuth configured, `REPO_URL=<your repo>` with the
+> default DEVFILE works too.
+>
 > **Step 6 is what makes device provisioning fast.** It bakes Ubuntu + docker +
 > the redroid Android images into one golden disk; every device then CSI-clones
 > that disk in seconds instead of downloading everything from the internet —
