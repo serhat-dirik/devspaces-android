@@ -42,11 +42,19 @@ OAUTH_PROXY_IMG="${OAUTH_PROXY_IMG:-registry.redhat.io/openshift4/ose-oauth-prox
 # ws-scrcpy (the screen) — pin the CONSUMED reference to the digest of the image
 # we build into ${IMG_NS}, so a rebuild/retag of :latest can't change what a live
 # workspace pulls without a deliberate bump here. To bump after rebuilding the
-# screen image (openshift/screen/buildconfig.yaml → start-build ws-scrcpy):
-#   oc get istag ws-scrcpy:latest -n ${IMG_NS} \
-#     -o jsonpath='{.image.dockerImageReference}'
-# and paste the @sha256:... below. Overridable by env (e.g. to track :latest in dev).
-WS_SCRCPY_IMG="${WS_SCRCPY_IMG:-${REG}/${IMG_NS}/ws-scrcpy@sha256:d8a313f52aefbf6dd8c4dc6cfcb2de5980ea688e18ec5fd51460b3b442c92168}"
+# screen image (openshift/screen/buildconfig.yaml → start-build ws-scrcpy).
+# The image is BUILT PER CLUSTER, so its digest differs on every deployment — a
+# hardcoded digest can never be portable. Resolve the current digest from the
+# ImageStream at provision time (pin-by-digest without the hardcoding); fall back
+# to the :latest tag if the lookup isn't permitted. Overridable via WS_SCRCPY_IMG.
+if [ -z "${WS_SCRCPY_IMG:-}" ]; then
+  SCR_DIGEST="$(oc get istag ws-scrcpy:latest -n "${IMG_NS}" -o jsonpath='{.image.metadata.name}' 2>/dev/null || true)"
+  if [ -n "$SCR_DIGEST" ]; then
+    WS_SCRCPY_IMG="${REG}/${IMG_NS}/ws-scrcpy@${SCR_DIGEST}"
+  else
+    WS_SCRCPY_IMG="${REG}/${IMG_NS}/ws-scrcpy:latest"
+  fi
+fi
 
 # this script is idempotent and re-runs on EVERY postStart. Snapshot
 # whether the device already exists at entry, BEFORE any apply. If it pre-existed,
