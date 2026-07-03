@@ -30,9 +30,13 @@ set -euo pipefail
 : "${REPO_URL:?set REPO_URL, e.g. https://github.com/<your-org>/<flutter-app-repo>}"
 NS="${DEVSPACES_NS:-openshift-devspaces}"
 DEVFILE="${DEVFILE-devfile.yaml}"
-# A bare devfile URL (e.g. raw.githubusercontent.com/.../served-devfile.yaml) is
-# registered WITHOUT a devfilePath param: set DEVFILE= (empty) for that.
-if [ -n "$DEVFILE" ]; then SAMPLE_URL="${REPO_URL}?devfilePath=${DEVFILE}"; else SAMPLE_URL="${REPO_URL}"; fi
+# REPO_URL can be a git repo (a devfilePath param is appended) or a URL that IS
+# a devfile (*.yaml — e.g. raw.githubusercontent.com/.../served-devfile.yaml),
+# which is registered as-is. Detected automatically; override with DEVFILE=.
+case "$REPO_URL" in
+  *.yaml|*.yml) SAMPLE_URL="${REPO_URL}" ;;
+  *)            SAMPLE_URL="${REPO_URL}?devfilePath=${DEVFILE}" ;;
+esac
 
 # icon (base64 PNG) sits next to this script
 ICON="$(cat "$(dirname "$0")/icon.b64")"

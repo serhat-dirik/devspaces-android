@@ -123,8 +123,7 @@ oc apply -f openshift/screen/buildconfig.yaml -n devspace-android-demo   # 5. ws
 oc start-build ws-scrcpy -n devspace-android-demo --follow --wait         #    …then build it (streams the log; exits non-zero on failure)
 ./openshift/prepare-golden-image.sh                        # 6. pre-bake the device golden image (~10 min, once)
 export REPO_URL=https://raw.githubusercontent.com/serhat-dirik/devspaces-android/main/samples/served-devfile.yaml
-DEVFILE= ./samples/register-sample.sh                      # 7. register the app in the catalog
-# (why the raw URL? see "Registering the sample" right below)
+./samples/register-sample.sh                               # 7. register the app in the catalog
 ```
 
 > **Step 6** bakes Ubuntu + docker + the redroid Android images into one golden
@@ -135,7 +134,7 @@ DEVFILE= ./samples/register-sample.sh                      # 7. register the app
 >
 > **Step 7** registers the devfile URL rather than the git repo: repo URLs only
 > resolve when the Dev Spaces **GitHub OAuth integration** is configured. If
-> yours is, `export REPO_URL=<your repo>` (without `DEVFILE=`) works too.
+> yours is, `export REPO_URL=<your git repo>` works too.
 
 > Device VMs need a KVM-capable node, but **KubeVirt schedules them there
 > automatically**.
