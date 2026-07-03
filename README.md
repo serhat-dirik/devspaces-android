@@ -120,7 +120,7 @@ The canonical runbook — steps 1–3 are cluster prerequisites, 4–7 deploy th
 ./preflight.sh prepare                                     # 3. install Dev Spaces (or let step 4 prompt) — pick ONE
 ./openshift/build-and-deploy.sh                            # 4. workspace image + platform bindings (once; developer perms come from Dev Spaces itself)
 oc apply -f openshift/screen/buildconfig.yaml -n devspace-android-demo   # 5. ws-scrcpy screen image…
-oc start-build ws-scrcpy -n devspace-android-demo          #    …then build it
+oc start-build ws-scrcpy -n devspace-android-demo --follow --wait         #    …then build it (streams the log; exits non-zero on failure)
 ./openshift/prepare-golden-image.sh                        # 6. pre-bake the device golden image (~10 min, once)
 export REPO_URL=https://github.com/serhat-dirik/devspaces-android-sample-app   # 7. register an app in the catalog
 # (deploying your own app? point REPO_URL at your fork / your app repo instead)

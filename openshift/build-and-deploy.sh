@@ -137,9 +137,10 @@ cat <<EOF
   Workspace image : ${IMAGE_REF}
 
   Next (one-time platform setup — README quickstart steps 5-7):
-    5. Build the device-screen (ws-scrcpy) image:
+    5. Build the device-screen (ws-scrcpy) image (streams the log; exits
+       non-zero on failure):
          oc apply -f openshift/screen/buildconfig.yaml -n ${BUILD_NS}
-         oc start-build ws-scrcpy -n ${BUILD_NS}
+         oc start-build ws-scrcpy -n ${BUILD_NS} --follow --wait
     6. Pre-bake the device golden image (~10 min, once — makes 'device start'
        ~2 min instead of ~10; skippable, falls back to the slow path):
          ./openshift/prepare-golden-image.sh
