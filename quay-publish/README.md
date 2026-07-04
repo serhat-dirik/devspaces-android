@@ -7,13 +7,16 @@ the platform's essence is that YOUR platform team builds and owns its images;
 this is only the try-it shortcut.
 
 ## What gets published
-| quay.io repo | Content |
-|---|---|
-| `serhat_dirik/devspaces-mobile-allinone` | the workspace image, copied from a deployed cluster |
-| `serhat_dirik/devspaces-ws-scrcpy` | the screen image, same |
-| `serhat_dirik/devspaces-android-golden` | the baked golden disk, wrapped as a KubeVirt containerDisk |
+One quay repo — `quay.io/serhat_dirik/devspaces` — three artifacts as tags
+(quay robots can't create repos, so everything lives in the one repo):
 
-Tags: `:latest` + `:<date>`. The date tag exists only so old digests are never
+| Tag | Content |
+|---|---|
+| `:mobile-allinone` | the workspace image, copied from a deployed cluster |
+| `:ws-scrcpy` | the screen image, same |
+| `:golden` | the baked golden disk, wrapped as a KubeVirt containerDisk |
+
+Date-stamped twins (`:mobile-allinone-<date>` etc.) accompany each tag. The date tag exists only so old digests are never
 garbage-collected (rollback = `git revert` of the digest pins). Consumers pin
 digests; nothing consumes the tags.
 
@@ -32,6 +35,5 @@ digests; nothing consumes the tags.
    push**. Testers stay on the previous version until that push.
 
 ## First-time notes
-- Pushing auto-creates the quay repos but they default to **private** — flip
-  all three to public in the quay UI once.
-- The robot needs write (or repo-create) permission in the quay account.
+- The repo must exist on quay with the robot granted **write** — and be
+  **public** for testers to pull.

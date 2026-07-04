@@ -11,20 +11,19 @@
 #
 # Publishes (":latest" + a ":<date>" tag that only exists so old digests are
 # never garbage-collected — consumers pin digests):
-#   quay.io/serhat_dirik/devspaces-mobile-allinone   (workspace image)
-#   quay.io/serhat_dirik/devspaces-ws-scrcpy         (screen image)
-#   quay.io/serhat_dirik/devspaces-android-golden    (golden disk as containerDisk)
+#   quay.io/serhat_dirik/devspaces:mobile-allinone   (workspace image)
+#   quay.io/serhat_dirik/devspaces:ws-scrcpy          (screen image)
+#   quay.io/serhat_dirik/devspaces:golden             (golden disk as containerDisk)
 # then rewrites the digest pins in the app repo's devfile-quay.yaml and
 # quickstart-cache.sh. YOU must commit those — the script reminds you.
 set -euo pipefail
 
-QUAY="${QUAY:-quay.io/serhat_dirik}"
+# ONE quay repo; the three artifacts are TAGS (quay robots can't create repos,
+# so everything lives in the single repo the account owner created).
+QUAY_REPO="${QUAY_REPO:-quay.io/serhat_dirik/devspaces}"
 PLATFORM_NS="${PLATFORM_NS:-devspace-android-demo}"
 DATE_TAG="$(date +%Y%m%d)"
 REG=image-registry.openshift-image-registry.svc:5000
-IMG_WORKSPACE="${QUAY}/devspaces-mobile-allinone"
-IMG_SCREEN="${QUAY}/devspaces-ws-scrcpy"
-IMG_GOLDEN="${QUAY}/devspaces-android-golden"
 APP_REPO="${APP_REPO:-$(cd "$(dirname "$0")/../../devspaces-android-sample-app" 2>/dev/null && pwd || true)}"
 
 ok(){   printf '  \033[32m✓\033[0m %s\n' "$*"; }
@@ -77,15 +76,14 @@ spec:
           args:
             - |
               set -euo pipefail
-              for pair in "mobile-allinone=${IMG_WORKSPACE}" "ws-scrcpy=${IMG_SCREEN}"; do
-                src="\${pair%%=*}"; dst="\${pair#*=}"
-                echo "== \${src} -> \${dst}"
+              for src in mobile-allinone ws-scrcpy; do
+                echo "== \${src} -> ${QUAY_REPO}:\${src}"
                 skopeo copy --src-tls-verify=false \
                   --src-creds "publisher:\${SRC_TOKEN}" \
                   --dest-authfile /auth/.dockerconfigjson \
-                  docker://${REG}/${PLATFORM_NS}/\${src}:latest docker://\${dst}:latest
+                  docker://${REG}/${PLATFORM_NS}/\${src}:latest docker://${QUAY_REPO}:\${src}
                 skopeo copy --all --authfile /auth/.dockerconfigjson \
-                  docker://\${dst}:latest docker://\${dst}:${DATE_TAG}
+                  docker://${QUAY_REPO}:\${src} docker://${QUAY_REPO}:\${src}-${DATE_TAG}
               done
       volumes:
         - name: quay-auth
@@ -131,8 +129,8 @@ spec:
               cd /work
               printf 'FROM scratch\nADD disk.qcow2 /disk/\n' > Containerfile
               buildah --storage-driver vfs bud -t golden:tmp .
-              buildah --storage-driver vfs push --authfile /auth/.dockerconfigjson golden:tmp docker://${IMG_GOLDEN}:latest
-              buildah --storage-driver vfs push --authfile /auth/.dockerconfigjson golden:tmp docker://${IMG_GOLDEN}:${DATE_TAG}
+              buildah --storage-driver vfs push --authfile /auth/.dockerconfigjson golden:tmp docker://${QUAY_REPO}:golden
+              buildah --storage-driver vfs push --authfile /auth/.dockerconfigjson golden:tmp docker://${QUAY_REPO}:golden-${DATE_TAG}
       volumes:
         - name: golden
           persistentVolumeClaim: { claimName: golden-android-disk }
@@ -153,9 +151,9 @@ done
 
 info "resolving published digests"
 digest_of(){ oc image info "$1" -o json 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin)["digest"])'; }
-D_WORKSPACE="$(digest_of "${IMG_WORKSPACE}:latest")"
-D_SCREEN="$(digest_of "${IMG_SCREEN}:latest")"
-D_GOLDEN="$(digest_of "${IMG_GOLDEN}:latest")"
+D_WORKSPACE="$(digest_of "${QUAY_REPO}:mobile-allinone")"
+D_SCREEN="$(digest_of "${QUAY_REPO}:ws-scrcpy")"
+D_GOLDEN="$(digest_of "${QUAY_REPO}:golden")"
 [ -n "$D_WORKSPACE" ] && [ -n "$D_SCREEN" ] && [ -n "$D_GOLDEN" ] || fail "digest resolution failed"
 ok "workspace: $D_WORKSPACE"
 ok "screen:    $D_SCREEN"
@@ -169,17 +167,18 @@ oc delete sa quay-publish -n "$PLATFORM_NS" --ignore-not-found >/dev/null
 
 [ -n "$APP_REPO" ] && [ -f "$APP_REPO/devfile-quay.yaml" ] || fail "app repo not found (set APP_REPO=/path/to/devspaces-android-sample-app)"
 info "pinning new digests into the app repo"
-python3 - "$APP_REPO" "$IMG_WORKSPACE" "$D_WORKSPACE" "$IMG_SCREEN" "$D_SCREEN" "$IMG_GOLDEN" "$D_GOLDEN" <<'PYEOF'
+python3 - "$APP_REPO" "$QUAY_REPO" "$D_WORKSPACE" "$D_SCREEN" "$D_GOLDEN" <<'PYEOF'
 import re, sys
-repo, iw, dw, isc, dsc, ig, dg = sys.argv[1:8]
-def pin(path, image, digest):
+repo, qrepo, dw, dsc, dg = sys.argv[1:6]
+def pin(path, tag, digest):
+    # matches repo:tag or repo:tag@sha256:... -> repo:tag@<new digest>
     with open(path) as f: s = f.read()
-    s2 = re.sub(re.escape(image) + r'[@:][^\s"\047}]+', f'{image}@{digest}', s)
+    s2 = re.sub(re.escape(qrepo) + ':' + tag + r'[^\s"\047}]*', f'{qrepo}:{tag}@{digest}', s)
     with open(path, 'w') as f: f.write(s2)
     return s != s2
-changed  = pin(f'{repo}/devfile-quay.yaml', iw, dw)
-changed |= pin(f'{repo}/devfile-quay.yaml', isc, dsc)
-changed |= pin(f'{repo}/quickstart-cache.sh', ig, dg)
+changed  = pin(f'{repo}/devfile-quay.yaml', 'mobile-allinone', dw)
+changed |= pin(f'{repo}/devfile-quay.yaml', 'ws-scrcpy', dsc)
+changed |= pin(f'{repo}/quickstart-cache.sh', 'golden', dg)
 print('  pins updated' if changed else '  pins already current')
 PYEOF
 
